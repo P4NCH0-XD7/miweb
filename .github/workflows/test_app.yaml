@@ -43,8 +43,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Build and push
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@v6
       with:
+        context: .
         push: true
-        tags: ghcr.io/P4NCH0-XD7/miweb:latest
+        tags: ghcr.io/p4nch0-xd7/miweb:latest
+
 
