@@ -49,9 +49,10 @@ class Inventario:
             raise ValueError("Stock insuficiente")
             
         producto.stock -= cantidad
-        # ERROR A PROPÓSITO: Se cambió el cálculo del IVA de 1.16 a 1.50 (50% de impuesto erróneo)
-        total = subtotal * 1.50
+        subtotal = producto.precio * cantidad
+        total = subtotal * 1.16
         return round(total, 2)
+
 
 
     def total_inventario(self) -> float:
