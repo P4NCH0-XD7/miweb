@@ -1,5 +1,7 @@
 import unittest
-from app import Producto, Inventario
+
+from app import Inventario, Producto
+
 
 class TestInventario(unittest.TestCase):
 
