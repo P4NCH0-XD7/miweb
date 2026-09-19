@@ -67,3 +67,5 @@ python scripts/transformar_oltp_a_olap.py
 ```bash
 python scripts/benchmarking.py
 ```
+
+:)
