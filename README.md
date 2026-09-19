@@ -1,4 +1,4 @@
-# Arquitectura de Datos con MongoDB Atlas - Sistema de Ventas (OLTP / OLAP)
+# Arquitectura de Datos con MongoDB Atlas - Sistema de Ventas (OLTP / OLAP) :)
 
 Proyecto de implementación completa de una arquitectura de datos transaccional y analítica en la nube utilizando **MongoDB Atlas**, **Python**, y **PyMongo**.
 
