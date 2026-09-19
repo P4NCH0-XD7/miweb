@@ -2,6 +2,7 @@
 Módulo de Gestión de Inventario y Ventas
 Contiene la lógica principal del sistema.
 """
+#hola 
 
 class Producto:
     def __init__(self, id_producto: int, nombre: str, precio: float, stock: int):
@@ -59,3 +60,4 @@ class Inventario:
         """Calcula el valor total del inventario."""
         total = sum(p.precio * p.stock for p in self.productos.values())
         return round(total, 2)
+# purba de branch protection
