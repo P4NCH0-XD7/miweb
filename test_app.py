@@ -112,6 +112,20 @@ class TestWebEndpoints(unittest.TestCase):
         self.assertFalse(is_feature_enabled("flag_inexistente", default=False))
         self.assertTrue(is_feature_enabled("flag_inexistente", default=True))
 
+    def test_dashboard_route(self):
+        response = self.client.get("/dashboard")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"miweb", response.data)
+
+    def test_crear_producto_endpoint(self):
+        response = self.client.post(
+            "/inventario/producto",
+            json={"nombre": "Audifonos Pro", "precio": 75.0, "stock": 15},
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.get_json()
+        self.assertEqual(data["producto"]["nombre"], "Audifonos Pro")
+
 
 if __name__ == "__main__":
     unittest.main()

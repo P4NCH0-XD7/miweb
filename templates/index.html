@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>miweb — Panel de Tienda, Inventario & Feature Toggles</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .badge-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- BARRA DE NAVEGACIÓN -->
+  <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-xl shadow-md">
+          <i class="fa-solid fa-store"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold tracking-tight">miweb</h1>
+            <span class="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
+              Live CD
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Trunk-Based Development + ConfigCat Toggles</p>
+        </div>
+      </div>
+
+      <!-- BADGES DE ESTADO EN TIEMPO REAL -->
+      <div class="flex items-center flex-wrap gap-2.5 text-xs">
+        <!-- Render Badge -->
+        <div class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 badge-pulse"></span>
+          <span class="text-slate-300">Render:</span>
+          <span class="font-semibold text-emerald-400">Activo (Live)</span>
+        </div>
+
+        <!-- Wishlist Toggle Badge -->
+        <div id="nav-toggle-badge" class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all">
+          <span id="nav-toggle-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+          <span class="text-slate-300">Wishlist Flag:</span>
+          <span id="nav-toggle-text" class="font-semibold text-amber-300">Consultando...</span>
+        </div>
+
+        <!-- Refresh Button -->
+        <button onclick="cargarTodo()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-arrows-rotate text-xs" id="refresh-icon"></i>
+          <span>Refrescar</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8">
+
+    <!-- HERO / BANNER DE ESTADO DE FEATURE FLAGS -->
+    <div id="flag-banner" class="rounded-2xl p-6 border shadow-sm transition-all duration-300 bg-white border-slate-200">
+      <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex items-start gap-4">
+          <div id="flag-banner-icon-bg" class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-2xl flex-shrink-0">
+            <i id="flag-banner-icon" class="fa-solid fa-toggle-on"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2.5 flex-wrap">
+              <h2 id="flag-banner-title" class="text-lg font-bold text-slate-900">Estado del Feature Flag: wishlist_enabled</h2>
+              <span id="flag-banner-pill" class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-700">Verificando</span>
+            </div>
+            <p id="flag-banner-desc" class="text-sm text-slate-600 mt-1">
+              Conectando con ConfigCat CDN para verificar si la funcionalidad está activa o en Dark Launching...
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 self-end md:self-auto flex-shrink-0">
+          <a href="https://app.configcat.com" target="_blank" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3.5 py-2 rounded-lg border border-slate-200 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-sliders"></i> Panel ConfigCat
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECCIÓN DE 2 COLUMNAS: CATÁLOGO DE INVENTARIO Y LISTA DE DESEOS -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+      <!-- COLUMNA IZQUIERDA: CATÁLOGO DE PRODUCTOS (7 cols) -->
+      <section class="lg:col-span-7 space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-boxes-stacked text-blue-600"></i> Catálogo de Inventario
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">Productos disponibles en la tienda para comprar o agregar a favoritos</p>
+          </div>
+          <button onclick="abrirModalProducto()" class="text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium px-3 py-2 rounded-lg transition flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-plus"></i> Nuevo Producto
+          </button>
+        </div>
+
+        <!-- LISTA DE PRODUCTOS -->
+        <div id="lista-productos" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Cargando placeholder -->
+          <div class="col-span-full py-12 text-center text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin text-2xl text-blue-600 mb-2"></i>
+            <p class="text-sm">Cargando inventario...</p>
+          </div>
+        </div>
+
+        <!-- RESUMEN DE TOTAL INVENTARIO -->
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 flex justify-between items-center">
+          <div>
+            <span class="text-xs font-semibold uppercase text-blue-700 tracking-wider">Valor Total del Inventario</span>
+            <p class="text-xs text-slate-500">Suma total de existencias en bodega</p>
+          </div>
+          <span id="total-inventario-valor" class="text-2xl font-black text-blue-900">$0.00</span>
+        </div>
+      </section>
+
+      <!-- COLUMNA DERECHA: LISTA DE DESEOS (WISHLIST) (5 cols) -->
+      <section class="lg:col-span-5 space-y-6">
+        <div>
+          <div class="flex items-center justify-between">
+            <h3 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <i class="fa-solid fa-heart text-rose-500"></i> Lista de Deseos (Wishlist)
+            </h3>
+            <span id="wishlist-counter-badge" class="text-xs bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full">
+              0 items
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 mt-0.5">Módulo de Slicing Vertical protegido por Feature Flag</p>
+        </div>
+
+        <!-- CONTENEDOR DE LA WISHLIST -->
+        <div id="wishlist-container" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm min-h-[320px] flex flex-col justify-between">
+          <!-- El contenido se inyecta dinámicamente con JS -->
+          <div class="py-12 text-center text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin text-2xl text-rose-500 mb-2"></i>
+            <p class="text-sm">Consultando estado de la Wishlist...</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- SECCIÓN INFERIOR: SIMULADOR DE VENTAS Y CONSOLA DE DEVOPS -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-4">
+
+      <!-- SIMULADOR DE VENTAS (6 cols) -->
+      <section class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+        <div>
+          <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <i class="fa-solid fa-cash-register text-emerald-600"></i> Terminal de Venta & Cálculo de IVA
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">Simula una compra en vivo actualizando el stock y calculando IVA (16%)</p>
+        </div>
+
+        <form id="form-venta" onsubmit="procesarVenta(event)" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Producto</label>
+              <select id="venta-producto-id" onchange="calcularResumenVenta()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <!-- Opciones dinámicas -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Cantidad a Comprar</label>
+              <input type="number" id="venta-cantidad" value="1" min="1" max="100" oninput="calcularResumenVenta()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs font-semibold text-slate-700">Descuento (%)</label>
+              <span id="toggle-descuento-info" class="text-[11px] text-slate-500">Toggle descuento_iva_toggle</span>
+            </div>
+            <input type="number" id="venta-descuento" value="0" min="0" max="100" step="5" oninput="calcularResumenVenta()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+
+          <!-- RESUMEN PREVIO DE VENTA -->
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1.5 text-xs text-slate-600">
+            <div class="flex justify-between">
+              <span>Subtotal:</span>
+              <span id="prev-subtotal" class="font-medium text-slate-800">$0.00</span>
+            </div>
+            <div class="flex justify-between text-emerald-600">
+              <span>Descuento Aplicable:</span>
+              <span id="prev-descuento" class="font-medium">-$0.00</span>
+            </div>
+            <div class="flex justify-between">
+              <span>IVA (16%):</span>
+              <span id="prev-iva" class="font-medium text-slate-800">$0.00</span>
+            </div>
+            <div class="border-t border-slate-200 pt-1.5 flex justify-between text-sm font-bold text-slate-900">
+              <span>Total Estimado:</span>
+              <span id="prev-total" class="text-blue-600">$0.00</span>
+            </div>
+          </div>
+
+          <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl shadow-md transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-receipt"></i> Realizar Venta
+          </button>
+        </form>
+      </section>
+
+      <!-- CONSOLA DEVOPS INTERACTIVA (6 cols) -->
+      <section class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm space-y-4 text-white">
+        <div class="flex justify-between items-center">
+          <div>
+            <h3 class="text-lg font-bold flex items-center gap-2">
+              <i class="fa-solid fa-terminal text-blue-400"></i> Inspector de Endpoints & API
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Prueba directa de las rutas públicas en vivo</p>
+          </div>
+          <span id="api-status-badge" class="text-[11px] px-2 py-0.5 rounded font-mono bg-slate-800 text-slate-300">HTTP Ready</span>
+        </div>
+
+        <!-- BOTONES DE PRUEBA RÁPIDA -->
+        <div class="flex flex-wrap gap-2">
+          <button onclick="probarEndpoint('/health')" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg font-mono transition text-blue-300">
+            GET /health
+          </button>
+          <button onclick="probarEndpoint('/toggle')" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg font-mono transition text-amber-300">
+            GET /toggle
+          </button>
+          <button onclick="probarEndpoint('/inventario')" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg font-mono transition text-emerald-300">
+            GET /inventario
+          </button>
+          <button onclick="probarEndpoint('/wishlist')" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg font-mono transition text-rose-300">
+            GET /wishlist
+          </button>
+        </div>
+
+        <!-- VISOR JSON -->
+        <div class="relative">
+          <div class="flex justify-between items-center text-[11px] text-slate-400 bg-slate-950 px-3 py-1.5 rounded-t-lg border-b border-slate-800">
+            <span id="endpoint-called-title">Respuesta JSON:</span>
+            <span id="endpoint-latency" class="font-mono">-- ms</span>
+          </div>
+          <pre id="json-viewer" class="bg-slate-950 p-4 rounded-b-lg font-mono text-xs text-emerald-400 overflow-x-auto max-h-[190px] border border-slate-800 leading-relaxed">{
+  "status": "listo",
+  "mensaje": "Presiona un botón arriba para inspeccionar en vivo"
+}</pre>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- MODAL PARA NUEVO PRODUCTO -->
+  <div id="modal-producto" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="text-lg font-bold text-slate-900">Agregar Producto al Inventario</h3>
+        <button onclick="cerrarModalProducto()" class="text-slate-400 hover:text-slate-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <form onsubmit="crearProducto(event)" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre del Producto</label>
+          <input type="text" id="nuevo-nombre" placeholder="Ej: Monitor 4K Ultra" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Precio ($)</label>
+            <input type="number" id="nuevo-precio" placeholder="150.00" min="0.01" step="0.01" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Stock Inicial</label>
+            <input type="number" id="nuevo-stock" placeholder="10" min="1" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" required>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="cerrarModalProducto()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">Cancelar</button>
+          <button type="submit" class="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow">Guardar Producto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    let inventarioCache = [];
+    let wishlistActivo = false;
+    let descuentoActivo = false;
+
+    // Toast de notificación
+    function mostrarToast(mensaje, tipo = "info") {
+      const container = document.getElementById("toast-container");
+      const toast = document.createElement("div");
+      toast.className = `pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-xs font-medium transition-all transform translate-y-2 opacity-0 duration-300 ${
+        tipo === 'success' ? 'bg-emerald-900 text-emerald-100 border-emerald-700' :
+        tipo === 'error' ? 'bg-rose-900 text-rose-100 border-rose-700' :
+        tipo === 'warning' ? 'bg-amber-900 text-amber-100 border-amber-700' :
+        'bg-slate-900 text-slate-100 border-slate-700'
+      }`;
+
+      const icon = tipo === 'success' ? 'fa-circle-check text-emerald-400' :
+                   tipo === 'error' ? 'fa-triangle-exclamation text-rose-400' :
+                   tipo === 'warning' ? 'fa-bolt text-amber-400' : 'fa-info-circle text-blue-400';
+
+      toast.innerHTML = `<i class="fa-solid ${icon} text-sm"></i><span>${mensaje}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // Consultar estado de los Feature Flags
+    async function cargarEstadoFlags() {
+      try {
+        const res = await fetch("/toggle");
+        const data = await res.json();
+        wishlistActivo = data.flags?.wishlist_enabled || false;
+        descuentoActivo = data.flags?.descuento_iva_toggle || false;
+
+        const navBadge = document.getElementById("nav-toggle-badge");
+        const navDot = document.getElementById("nav-toggle-dot");
+        const navText = document.getElementById("nav-toggle-text");
+
+        const banner = document.getElementById("flag-banner");
+        const bannerIconBg = document.getElementById("flag-banner-icon-bg");
+        const bannerIcon = document.getElementById("flag-banner-icon");
+        const bannerPill = document.getElementById("flag-banner-pill");
+        const bannerDesc = document.getElementById("flag-banner-desc");
+
+        if (wishlistActivo) {
+          // Flag ON
+          navDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400";
+          navText.textContent = "ON (Activo)";
+          navText.className = "font-semibold text-emerald-400";
+
+          banner.className = "rounded-2xl p-6 border shadow-sm transition-all duration-300 bg-emerald-50/70 border-emerald-200";
+          bannerIconBg.className = "w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl flex-shrink-0";
+          bannerIcon.className = "fa-solid fa-circle-check";
+          bannerPill.className = "text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200";
+          bannerPill.textContent = "100% Rollout / Liberado";
+          bannerDesc.textContent = "El Feature Flag está activado en ConfigCat. La Lista de Deseos (Wishlist) responde con HTTP 200 OK y está disponible para todos los clientes en producción sin necesidad de nuevo despliegue.";
+        } else {
+          // Flag OFF
+          navDot.className = "w-2.5 h-2.5 rounded-full bg-rose-400";
+          navText.textContent = "OFF (Dark Launch)";
+          navText.className = "font-semibold text-rose-400";
+
+          banner.className = "rounded-2xl p-6 border shadow-sm transition-all duration-300 bg-amber-50/70 border-amber-200";
+          bannerIconBg.className = "w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-2xl flex-shrink-0";
+          bannerIcon.className = "fa-solid fa-shield-halved";
+          bannerPill.className = "text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 border border-amber-200";
+          bannerPill.textContent = "Dark Launch (0% Rollout)";
+          bannerDesc.textContent = "El código existe en el servidor en Render pero permanece dormido bajo control de ConfigCat. El endpoint responde HTTP 403 Forbidden para proteger a los usuarios hasta que el Product Owner lo active.";
+        }
+
+        const descInfo = document.getElementById("toggle-descuento-info");
+        if (descInfo) {
+          descInfo.textContent = descuentoActivo ? "🟢 Flag Activo (aplica descuento)" : "⚪ Flag Inactivo (descuento en 0)";
+        }
+      } catch (err) {
+        console.error("Error al cargar flags:", err);
+      }
+    }
+
+    // Cargar inventario de productos
+    async function cargarInventario() {
+      const container = document.getElementById("lista-productos");
+      const selectVenta = document.getElementById("venta-producto-id");
+
+      try {
+        const res = await fetch("/inventario");
+        const data = await res.json();
+        inventarioCache = data.productos || [];
+
+        document.getElementById("total-inventario-valor").textContent = `$${(data.total_valor_inventario || 0).toFixed(2)}`;
+
+        if (inventarioCache.length === 0) {
+          container.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400 text-sm">No hay productos en inventario.</div>`;
+          selectVenta.innerHTML = `<option value="">Sin productos</option>`;
+          return;
+        }
+
+        // Renderizar Cards de Productos
+        container.innerHTML = inventarioCache.map(p => `
+          <div class="bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-4 shadow-sm transition-all hover:shadow-md flex flex-col justify-between space-y-3">
+            <div>
+              <div class="flex justify-between items-start">
+                <span class="text-[11px] font-mono text-slate-400">ID: #${p.id}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium ${p.stock > 5 ? 'bg-slate-100 text-slate-700' : 'bg-rose-50 text-rose-700'}">
+                  Stock: ${p.stock} u.
+                </span>
+              </div>
+              <h4 class="font-bold text-slate-900 mt-1">${p.nombre}</h4>
+              <p class="text-lg font-black text-blue-600 mt-1">$${p.precio.toFixed(2)}</p>
+            </div>
+
+            <div class="flex gap-2 pt-1 border-t border-slate-100">
+              <button onclick="agregarAWishlist(${p.id})" class="flex-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5">
+                <i class="fa-regular fa-heart"></i> Deseo
+              </button>
+              <button onclick="seleccionarParaVenta(${p.id})" class="flex-1 text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium py-2 px-2.5 rounded-lg transition flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-cart-shopping"></i> Comprar
+              </button>
+            </div>
+          </div>
+        `).join("");
+
+        // Opciones del selector de venta
+        selectVenta.innerHTML = inventarioCache.map(p => `
+          <option value="${p.id}" ${p.stock === 0 ? 'disabled' : ''}>
+            ${p.nombre} ($${p.precio.toFixed(2)} - ${p.stock} disp.)
+          </option>
+        `).join("");
+
+        calcularResumenVenta();
+      } catch (err) {
+        container.innerHTML = `<div class="col-span-full py-8 text-center text-rose-500 text-sm">Error cargando inventario.</div>`;
+      }
+    }
+
+    // Cargar contenido de la Wishlist
+    async function cargarWishlist() {
+      const container = document.getElementById("wishlist-container");
+      const badge = document.getElementById("wishlist-counter-badge");
+
+      try {
+        const res = await fetch("/wishlist");
+        const status = res.status;
+        const data = await res.json();
+
+        if (status === 403) {
+          // Feature Flag OFF (Dark Launch)
+          badge.textContent = "Bloqueado (OFF)";
+          badge.className = "text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full";
+
+          container.innerHTML = `
+            <div class="text-center py-6 space-y-3">
+              <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 mx-auto flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-lock"></i>
+              </div>
+              <h4 class="font-bold text-slate-900 text-base">Modo Dark Launch Activo (HTTP 403)</h4>
+              <p class="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                El endpoint <code>/wishlist</code> está protegido por ConfigCat. El servidor responde <code>HTTP 403 Forbidden</code> porque el toggle está apagado.
+              </p>
+              <div class="bg-slate-900 text-amber-300 p-3 rounded-xl font-mono text-[11px] text-left overflow-x-auto max-w-sm mx-auto">
+                <span class="text-slate-400">// Respuesta real del servidor:</span><br>
+                ${JSON.stringify(data, null, 2)}
+              </div>
+            </div>
+            <div class="border-t border-slate-100 pt-3 text-center">
+              <p class="text-[11px] text-slate-400">Activa el toggle en ConfigCat para desbloquear la Wishlist en vivo sin redeploy.</p>
+            </div>
+          `;
+          return;
+        }
+
+        // Feature Flag ON
+        const items = data.wishlist || [];
+        badge.textContent = `${items.length} ${items.length === 1 ? 'producto' : 'productos'}`;
+        badge.className = "text-xs bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full";
+
+        if (items.length === 0) {
+          container.innerHTML = `
+            <div class="text-center py-10 space-y-2">
+              <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center text-xl">
+                <i class="fa-regular fa-heart"></i>
+              </div>
+              <p class="text-sm font-semibold text-slate-700">Tu Lista de Deseos está vacía</p>
+              <p class="text-xs text-slate-400">Haz clic en el botón "Deseo" de cualquier producto del catálogo para guardarlo aquí.</p>
+            </div>
+            <div class="border-t border-slate-100 pt-3 text-center">
+              <span class="text-[11px] text-emerald-600 font-medium">🟢 Módulo operando en producción con HTTP 200 OK</span>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="space-y-2.5 overflow-y-auto max-h-[360px] pr-1">
+            ${items.map(item => `
+              <div class="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl transition">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center text-sm font-bold">
+                    <i class="fa-solid fa-heart"></i>
+                  </div>
+                  <div>
+                    <h5 class="text-xs font-bold text-slate-900">${item.nombre}</h5>
+                    <span class="text-xs text-blue-600 font-bold">$${item.precio.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="seleccionarParaVenta(${item.id})" class="text-[11px] bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1.5 rounded-lg transition" title="Comprar ahora">
+                    Comprar
+                  </button>
+                  <button onclick="removerDeWishlist(${item.id})" class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition" title="Quitar de deseos">
+                    <i class="fa-solid fa-trash-can text-xs"></i>
+                  </button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+          <div class="border-t border-slate-100 pt-3 flex justify-between items-center text-[11px] text-slate-500">
+            <span>Total guardados: <b>${items.length}</b></span>
+            <span class="text-emerald-600 font-semibold flex items-center gap-1">
+              <i class="fa-solid fa-circle-check"></i> Activo en Vivo
+            </span>
+          </div>
+        `;
+      } catch (err) {
+        container.innerHTML = `<div class="py-12 text-center text-rose-500 text-sm">Error consultando Wishlist.</div>`;
+      }
+    }
+
+    // Agregar a Wishlist (POST /wishlist)
+    async function agregarAWishlist(idProducto) {
+      try {
+        const res = await fetch("/wishlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id_producto: idProducto })
+        });
+        const data = await res.json();
+
+        if (res.status === 403) {
+          mostrarToast(`Acceso denegado (Dark Launch): ${data.error}`, "warning");
+          probarEndpoint("/wishlist");
+        } else if (res.ok) {
+          mostrarToast(data.mensaje || "Producto guardado en favoritos", "success");
+          cargarWishlist();
+        } else {
+          mostrarToast(data.error || "Error al agregar", "error");
+        }
+      } catch (err) {
+        mostrarToast("Fallo de conexión al agregar a la Wishlist", "error");
+      }
+    }
+
+    // Remover de Wishlist (POST /wishlist/remover)
+    async function removerDeWishlist(idProducto) {
+      try {
+        const res = await fetch("/wishlist/remover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id_producto: idProducto })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          mostrarToast("Producto eliminado de tu lista", "info");
+          cargarWishlist();
+        } else {
+          mostrarToast(data.error || "No se pudo remover", "error");
+        }
+      } catch (err) {
+        mostrarToast("Error de conexión", "error");
+      }
+    }
+
+    // Seleccionar producto en el formulario de ventas
+    function seleccionarParaVenta(idProducto) {
+      const select = document.getElementById("venta-producto-id");
+      select.value = idProducto;
+      calcularResumenVenta();
+      document.getElementById("form-venta").scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Calcular previo de venta
+    function calcularResumenVenta() {
+      const id = parseInt(document.getElementById("venta-producto-id").value) || 0;
+      const cant = parseInt(document.getElementById("venta-cantidad").value) || 1;
+      const desc = parseFloat(document.getElementById("venta-descuento").value) || 0;
+
+      const prod = inventarioCache.find(p => p.id === id);
+      if (!prod) return;
+
+      const subtotal = prod.precio * cant;
+      const descuentoMonto = descuentoActivo ? (subtotal * (desc / 100)) : 0;
+      const subtotalConDesc = subtotal - descuentoMonto;
+      const iva = subtotalConDesc * 0.16;
+      const total = subtotalConDesc + iva;
+
+      document.getElementById("prev-subtotal").textContent = `$${subtotal.toFixed(2)}`;
+      document.getElementById("prev-descuento").textContent = `-$${descuentoMonto.toFixed(2)} (${descuentoActivo ? desc : 0}%)`;
+      document.getElementById("prev-iva").textContent = `$${iva.toFixed(2)}`;
+      document.getElementById("prev-total").textContent = `$${total.toFixed(2)}`;
+    }
+
+    // Procesar Venta (POST /venta)
+    async function procesarVenta(e) {
+      e.preventDefault();
+      const id = parseInt(document.getElementById("venta-producto-id").value);
+      const cant = parseInt(document.getElementById("venta-cantidad").value);
+      const desc = parseFloat(document.getElementById("venta-descuento").value) || 0;
+
+      try {
+        const res = await fetch("/venta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id_producto: id, cantidad: cant, descuento: desc })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          mostrarToast(`¡Venta exitosa! Total con IVA: $${data.total_con_iva.toFixed(2)}`, "success");
+          cargarInventario();
+          probarEndpoint("/venta", "POST", { id_producto: id, cantidad: cant, descuento: desc }, data);
+        } else {
+          mostrarToast(data.error || "Error al procesar venta", "error");
+        }
+      } catch (err) {
+        mostrarToast("Fallo al conectar con el servidor", "error");
+      }
+    }
+
+    // Probar Endpoint en la Consola
+    async function probarEndpoint(url, method = "GET", body = null, precalcData = null) {
+      const viewer = document.getElementById("json-viewer");
+      const title = document.getElementById("endpoint-called-title");
+      const latencyBadge = document.getElementById("endpoint-latency");
+      const statusBadge = document.getElementById("api-status-badge");
+
+      title.textContent = `${method} ${url}`;
+      latencyBadge.textContent = "Cargando...";
+
+      if (precalcData) {
+        viewer.textContent = JSON.stringify(precalcData, null, 2);
+        statusBadge.textContent = "HTTP 200 OK";
+        statusBadge.className = "text-[11px] px-2 py-0.5 rounded font-mono bg-emerald-950 text-emerald-400 border border-emerald-800";
+        latencyBadge.textContent = "12 ms";
+        return;
+      }
+
+      const start = performance.now();
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: body ? { "Content-Type": "application/json" } : {}
+        });
+        const duration = Math.round(performance.now() - start);
+        const data = await res.json();
+
+        latencyBadge.textContent = `${duration} ms`;
+        statusBadge.textContent = `HTTP ${res.status} ${res.statusText || (res.status === 200 ? 'OK' : res.status === 403 ? 'Forbidden' : '')}`;
+        statusBadge.className = `text-[11px] px-2 py-0.5 rounded font-mono ${
+          res.status === 200 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+          res.status === 403 ? 'bg-amber-950 text-amber-400 border border-amber-800' :
+          'bg-rose-950 text-rose-400 border border-rose-800'
+        }`;
+
+        viewer.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        latencyBadge.textContent = "Error";
+        statusBadge.textContent = "Network Error";
+        viewer.textContent = JSON.stringify({ error: err.message }, null, 2);
+      }
+    }
+
+    // Modal nuevo producto
+    function abrirModalProducto() {
+      document.getElementById("modal-producto").classList.remove("hidden");
+    }
+    function cerrarModalProducto() {
+      document.getElementById("modal-producto").classList.add("hidden");
+    }
+
+    async function crearProducto(e) {
+      e.preventDefault();
+      const nombre = document.getElementById("nuevo-nombre").value.trim();
+      const precio = parseFloat(document.getElementById("nuevo-precio").value);
+      const stock = parseInt(document.getElementById("nuevo-stock").value);
+
+      try {
+        const res = await fetch("/inventario/producto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre, precio, stock })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          mostrarToast(`Producto '${nombre}' añadido al catálogo`, "success");
+          cerrarModalProducto();
+          cargarInventario();
+        } else {
+          mostrarToast(data.error || "Error al crear producto", "error");
+        }
+      } catch (err) {
+        mostrarToast("Error de conexión", "error");
+      }
+    }
+
+    // Cargar todo al inicio
+    async function cargarTodo() {
+      const icon = document.getElementById("refresh-icon");
+      icon.classList.add("fa-spin");
+      await Promise.all([cargarEstadoFlags(), cargarInventario(), cargarWishlist()]);
+      setTimeout(() => icon.classList.remove("fa-spin"), 500);
+    }
+
+    document.addEventListener("DOMContentLoaded", cargarTodo);
+  </script>
+</body>
+</html>

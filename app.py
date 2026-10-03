@@ -5,7 +5,7 @@ Ejemplo 1: Lista de Deseos (Wishlist) en e-commerce.
 """
 
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 import configcatclient
 
 app = Flask(__name__)
@@ -141,7 +141,17 @@ def health():
 
 @app.route("/")
 def index():
-    """Ruta principal con información de la tienda y estado de Feature Flags."""
+    """Ruta principal: renderiza la interfaz web interactiva en navegadores
+    o devuelve JSON si es consultada como API/tests.
+    """
+    accept = request.headers.get("Accept", "")
+    if (
+        "text/html" in accept
+        and "application/json" not in accept
+        and request.args.get("format") != "json"
+    ):
+        return render_template("index.html")
+
     wishlist_activo = is_feature_enabled("wishlist_enabled", default=False)
     descuento_activo = is_feature_enabled("descuento_iva_toggle", default=False)
     return (
@@ -166,11 +176,20 @@ def index():
                     "/wishlist",
                     "/inventario",
                     "/venta",
+                    "/dashboard",
                 ],
             }
         ),
         200,
     )
+
+
+@app.route("/dashboard")
+@app.route("/app")
+@app.route("/ui")
+def dashboard():
+    """Ruta directa para abrir la interfaz frontend interactiva."""
+    return render_template("index.html")
 
 
 @app.route("/toggle")
@@ -259,6 +278,41 @@ def gestionar_wishlist():
     )
 
 
+@app.route("/wishlist/<int:id_producto>", methods=["DELETE"])
+@app.route("/wishlist/remover", methods=["POST"])
+def remover_de_wishlist(id_producto=None):
+    """Permite eliminar un producto de la Lista de Deseos."""
+    wishlist_activo = is_feature_enabled("wishlist_enabled", default=False)
+    if not wishlist_activo:
+        return (
+            jsonify(
+                {
+                    "error": "Funcionalidad desactivada por Feature Flag (Dark Launch / TBD)",
+                    "feature_flag": "wishlist_enabled",
+                    "estado": "OFF (0% Rollout)",
+                }
+            ),
+            403,
+        )
+
+    if id_producto is None:
+        data = request.get_json(silent=True) or {}
+        id_producto = int(data.get("id_producto", 0))
+
+    wishlist.remover_item(id_producto)
+    return (
+        jsonify(
+            {
+                "status": "exitoso",
+                "mensaje": f"Producto {id_producto} removido de la Lista de Deseos",
+                "id_producto": id_producto,
+                "wishlist": wishlist.obtener_items(),
+            }
+        ),
+        200,
+    )
+
+
 @app.route("/inventario")
 def ver_inventario():
     """Lista los productos y el valor total del inventario."""
@@ -280,6 +334,42 @@ def ver_inventario():
         ),
         200,
     )
+
+
+@app.route("/inventario/producto", methods=["POST"])
+def crear_producto():
+    """Permite añadir un nuevo producto al inventario desde el frontend."""
+    data = request.get_json(silent=True) or {}
+    try:
+        id_prod = int(
+            data.get(
+                "id_producto",
+                max(inventario.productos.keys(), default=0) + 1,
+            )
+        )
+        nombre = str(data.get("nombre", f"Producto #{id_prod}")).strip()
+        precio = float(data.get("precio", 10.0))
+        stock = int(data.get("stock", 5))
+
+        prod = Producto(id_prod, nombre, precio, stock)
+        inventario.agregar_producto(prod)
+        return (
+            jsonify(
+                {
+                    "status": "exitoso",
+                    "mensaje": f"Producto '{nombre}' agregado exitosamente",
+                    "producto": {
+                        "id": prod.id_producto,
+                        "nombre": prod.nombre,
+                        "precio": prod.precio,
+                        "stock": prod.stock,
+                    },
+                }
+            ),
+            201,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route("/venta", methods=["POST"])
