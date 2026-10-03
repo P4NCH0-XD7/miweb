@@ -1,6 +1,7 @@
 """Módulo principal de miweb con Despliegue Continuo (Render)
 
 y Feature Flags en tiempo real (ConfigCat).
+Ejemplo 1: Lista de Deseos (Wishlist) en e-commerce.
 """
 
 import os
@@ -39,24 +40,6 @@ def is_feature_enabled(feature_key: str, default: bool = False) -> bool:
         except Exception:
             return default
     return default
-
-
-class Calculator:
-    """Lógica de operaciones matemáticas para el proyecto."""
-
-    def sumar(self, a: float, b: float) -> float:
-        return a + b
-
-    def restar(self, a: float, b: float) -> float:
-        return a - b
-
-    def multiplicar(self, a: float, b: float) -> float:
-        return a * b
-
-    def dividir(self, a: float, b: float) -> float:
-        if b == 0:
-            raise ValueError("No es posible dividir entre cero")
-        return a / b
 
 
 class Producto:
@@ -115,13 +98,29 @@ class Inventario:
         return round(total, 2)
 
 
+class Wishlist:
+    """Módulo de Lista de Deseos (Ejemplo 1 de Slicing Vertical)."""
+
+    def __init__(self):
+        self.items = set()
+
+    def agregar_item(self, id_producto: int):
+        self.items.add(id_producto)
+
+    def remover_item(self, id_producto: int):
+        self.items.discard(id_producto)
+
+    def obtener_items(self):
+        return sorted(list(self.items))
+
+
 # Instancias globales
 inventario = Inventario()
 inventario.agregar_producto(Producto(1, "Laptop Pro", 1000.0, 10))
 inventario.agregar_producto(Producto(2, "Mouse Gamer", 50.0, 50))
 inventario.agregar_producto(Producto(3, "Teclado Mecanico", 80.0, 30))
 
-calculadora = Calculator()
+wishlist = Wishlist()
 
 
 @app.route("/health")
@@ -142,18 +141,19 @@ def health():
 
 @app.route("/")
 def index():
-    """Ruta principal con estado de Feature Flags en producción."""
-    resta_activa = is_feature_enabled("calculadora_resta", default=False)
+    """Ruta principal con información de la tienda y estado de Feature Flags."""
+    wishlist_activo = is_feature_enabled("wishlist_enabled", default=False)
     descuento_activo = is_feature_enabled("descuento_iva_toggle", default=False)
     return (
         jsonify(
             {
-                "aplicacion": "miweb - Gestión de Inventario y Calculadora TBD",
+                "aplicacion": "miweb - Tienda en Línea e Inventario TBD",
                 "despliegue": "Render Continuous Deployment",
                 "feature_flags": {
-                    "calculadora_resta": {
-                        "activo": resta_activa,
-                        "descripcion": "Operación de resta protegida por ConfigCat",
+                    "wishlist_enabled": {
+                        "activo": wishlist_activo,
+                        "descripcion": "Lista de deseos para guardar productos favoritos",
+                        "ejemplo": "Ejemplo 1 de Slicing Vertical",
                     },
                     "descuento_iva_toggle": {
                         "activo": descuento_activo,
@@ -163,7 +163,7 @@ def index():
                 "endpoints": [
                     "/health",
                     "/toggle",
-                    "/calculadora/restar",
+                    "/wishlist",
                     "/inventario",
                     "/venta",
                 ],
@@ -176,13 +176,13 @@ def index():
 @app.route("/toggle")
 def toggle_status():
     """Consulta el estado en vivo de los Feature Flags en ConfigCat."""
-    resta_activa = is_feature_enabled("calculadora_resta", default=False)
+    wishlist_activo = is_feature_enabled("wishlist_enabled", default=False)
     descuento_activo = is_feature_enabled("descuento_iva_toggle", default=False)
     return (
         jsonify(
             {
                 "flags": {
-                    "calculadora_resta": resta_activa,
+                    "wishlist_enabled": wishlist_activo,
                     "descuento_iva_toggle": descuento_activo,
                 },
                 "configcat_sdk_configured": bool(CONFIGCAT_KEY),
@@ -192,19 +192,19 @@ def toggle_status():
     )
 
 
-@app.route("/calculadora/restar", methods=["GET", "POST"])
-def calc_restar():
-    """Operación de resta protegida por el Feature Toggle 'calculadora_resta'."""
-    resta_activa = is_feature_enabled("calculadora_resta", default=False)
+@app.route("/wishlist", methods=["GET", "POST"])
+def gestionar_wishlist():
+    """Endpoint de Lista de Deseos (Ticket 1 protegido por Feature Flag 'wishlist_enabled')."""
+    wishlist_activo = is_feature_enabled("wishlist_enabled", default=False)
 
-    if not resta_activa:
+    if not wishlist_activo:
         return (
             jsonify(
                 {
-                    "error": "Operación de resta desactivada por Feature Flag (Dark Launch / TBD)",
-                    "feature_flag": "calculadora_resta",
+                    "error": "Funcionalidad de Lista de Deseos (Wishlist) desactivada por Feature Flag (Dark Launch / TBD)",
+                    "feature_flag": "wishlist_enabled",
                     "estado": "OFF (0% Rollout)",
-                    "mensaje": "El código existe en producción pero permanece dormido hasta que el PO active el toggle en ConfigCat.",
+                    "mensaje": "El código existe en producción pero permanece dormido hasta que el Product Owner active el toggle en ConfigCat.",
                 }
             ),
             403,
@@ -212,23 +212,47 @@ def calc_restar():
 
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        a = float(data.get("a", 10))
-        b = float(data.get("b", 4))
-    else:
-        a = float(request.args.get("a", 10))
-        b = float(request.args.get("b", 4))
+        id_prod = int(data.get("id_producto", 1))
+        try:
+            prod = inventario.obtener_producto(id_prod)
+            wishlist.agregar_item(id_prod)
+            return (
+                jsonify(
+                    {
+                        "status": "exitoso",
+                        "mensaje": f"Producto '{prod.nombre}' agregado a tu Lista de Deseos",
+                        "id_producto": id_prod,
+                        "producto": prod.nombre,
+                        "precio": prod.precio,
+                        "feature_flag": "wishlist_enabled",
+                        "estado": "ON (Activo)",
+                    }
+                ),
+                200,
+            )
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
 
-    resultado = calculadora.restar(a, b)
+    # GET: Listar productos guardados
+    items_ids = wishlist.obtener_items()
+    productos_guardados = [
+        {
+            "id": inventario.obtener_producto(p_id).id_producto,
+            "nombre": inventario.obtener_producto(p_id).nombre,
+            "precio": inventario.obtener_producto(p_id).precio,
+        }
+        for p_id in items_ids
+        if p_id in inventario.productos
+    ]
+
     return (
         jsonify(
             {
                 "status": "exitoso",
-                "operacion": "resta",
-                "a": a,
-                "b": b,
-                "resultado": resultado,
-                "feature_flag": "calculadora_resta",
+                "feature_flag": "wishlist_enabled",
                 "estado": "ON (Activo)",
+                "total_productos_guardados": len(productos_guardados),
+                "wishlist": productos_guardados,
             }
         ),
         200,

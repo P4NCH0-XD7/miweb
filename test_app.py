@@ -1,26 +1,30 @@
 import unittest
-from app import Calculator, Inventario, Producto, app, is_feature_enabled
+from app import Inventario, Producto, Wishlist, app, is_feature_enabled
 
 
-class TestCalculator(unittest.TestCase):
+class TestWishlist(unittest.TestCase):
     def setUp(self):
-        self.calc = Calculator()
+        self.wishlist = Wishlist()
 
-    def test_sumar(self):
-        self.assertEqual(self.calc.sumar(5, 3), 8)
+    def test_agregar_item(self):
+        self.wishlist.agregar_item(1)
+        self.assertIn(1, self.wishlist.obtener_items())
 
-    def test_restar(self):
-        self.assertEqual(self.calc.restar(10, 4), 6)
+    def test_remover_item(self):
+        self.wishlist.agregar_item(1)
+        self.wishlist.remover_item(1)
+        self.assertNotIn(1, self.wishlist.obtener_items())
 
-    def test_multiplicar(self):
-        self.assertEqual(self.calc.multiplicar(4, 5), 20)
+    def test_items_unicos(self):
+        self.wishlist.agregar_item(2)
+        self.wishlist.agregar_item(2)
+        self.assertEqual(len(self.wishlist.obtener_items()), 1)
 
-    def test_dividir(self):
-        self.assertEqual(self.calc.dividir(20, 4), 5)
-
-    def test_division_por_cero(self):
-        with self.assertRaises(ValueError):
-            self.calc.dividir(10, 0)
+    def test_obtener_items_ordenados(self):
+        self.wishlist.agregar_item(5)
+        self.wishlist.agregar_item(1)
+        self.wishlist.agregar_item(3)
+        self.assertEqual(self.wishlist.obtener_items(), [1, 3, 5])
 
 
 class TestInventario(unittest.TestCase):
@@ -83,6 +87,7 @@ class TestWebEndpoints(unittest.TestCase):
         data = response.get_json()
         self.assertIn("despliegue", data)
         self.assertIn("endpoints", data)
+        self.assertIn("wishlist_enabled", data["feature_flags"])
 
     def test_inventario_endpoint(self):
         response = self.client.get("/inventario")
@@ -96,11 +101,11 @@ class TestWebEndpoints(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
         self.assertIn("flags", data)
-        self.assertIn("calculadora_resta", data["flags"])
+        self.assertIn("wishlist_enabled", data["flags"])
 
-    def test_calculadora_restar_toggle_protection(self):
-        """Verifica que el endpoint responda según el estado del flag."""
-        response = self.client.get("/calculadora/restar?a=10&b=4")
+    def test_wishlist_endpoint_toggle_protection(self):
+        """Verifica que el endpoint responda 200 o 403 dependiendo del estado del flag."""
+        response = self.client.get("/wishlist")
         self.assertIn(response.status_code, [200, 403])
 
     def test_feature_toggle_fallback(self):

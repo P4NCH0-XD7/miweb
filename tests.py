@@ -1,7 +1,7 @@
 import unittest
-from test_app import TestCalculator, TestInventario, TestWebEndpoints
+from test_app import TestInventario, TestWebEndpoints, TestWishlist
 
-__all__ = ["TestCalculator", "TestInventario", "TestWebEndpoints"]
+__all__ = ["TestInventario", "TestWebEndpoints", "TestWishlist"]
 
 if __name__ == "__main__":
     unittest.main()
