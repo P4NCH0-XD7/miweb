@@ -114,6 +114,105 @@ class Wishlist:
         return sorted(list(self.items))
 
 
+class PagosExpress:
+    """Módulo de Pagos Express con un solo clic (Caso Taller 6).
+
+    Incluye telemetría en tiempo real de conversión y tasa de error para
+    habilitar una Liberación Segura (Canary 20%) y criterio de Kill-Switch.
+    """
+
+    UMBRAL_ERROR_ROLLBACK_PCT = 2.0
+
+    def __init__(self):
+        self.intentos = 0
+        self.exitos = 0
+        self.errores = 0
+        self.ingresos_totales = 0.0
+        self.historial = []
+
+    def procesar_pago(
+        self,
+        inv: Inventario,
+        id_producto: int,
+        cantidad: int = 1,
+        metodo_pago: str = "Tarjeta Guardada 1-Clic",
+    ) -> dict:
+        """Ejecuta un compra instantánea 1-clic registrando métricas de conversión y error."""
+        self.intentos += 1
+        try:
+            prod = inv.obtener_producto(id_producto)
+            total = inv.realizar_venta(id_producto, cantidad)
+            self.exitos += 1
+            self.ingresos_totales = round(self.ingresos_totales + total, 2)
+            transaccion = {
+                "id_transaccion": self.intentos,
+                "producto": prod.nombre,
+                "cantidad": cantidad,
+                "total_con_iva": total,
+                "metodo_pago": metodo_pago,
+                "estado": "APROBADO",
+            }
+            self.historial.append(transaccion)
+            return transaccion
+        except Exception as exc:
+            self.errores += 1
+            self.historial.append(
+                {
+                    "id_transaccion": self.intentos,
+                    "id_producto": id_producto,
+                    "cantidad": cantidad,
+                    "estado": "ERROR",
+                    "detalle": str(exc),
+                }
+            )
+            raise
+
+    def registrar_error_pasarela(self, detalle: str = "Timeout en pasarela 1-Clic"):
+        """Registra un fallo simulado para validar alertas de rollback y Kill-Switch."""
+        self.intentos += 1
+        self.errores += 1
+        self.historial.append(
+            {
+                "id_transaccion": self.intentos,
+                "estado": "ERROR_PASARELA",
+                "detalle": detalle,
+            }
+        )
+
+    def obtener_metricas(self) -> dict:
+        """Calcula métricas de observabilidad para decidir avanzar o apagar el toggle."""
+        if self.intentos > 0:
+            tasa_conversion = round((self.exitos / self.intentos) * 100.0, 2)
+            tasa_error = round((self.errores / self.intentos) * 100.0, 2)
+        else:
+            tasa_conversion = 100.0
+            tasa_error = 0.0
+
+        alerta_rollback = (
+            self.intentos > 0 and tasa_error > self.UMBRAL_ERROR_ROLLBACK_PCT
+        )
+
+        return {
+            "intentos_totales": self.intentos,
+            "pagos_exitosos": self.exitos,
+            "pagos_con_error": self.errores,
+            "tasa_conversion_pct": tasa_conversion,
+            "tasa_error_pct": tasa_error,
+            "ingresos_express": round(self.ingresos_totales, 2),
+            "umbral_max_error_pct": self.UMBRAL_ERROR_ROLLBACK_PCT,
+            "alerta_rollback": alerta_rollback,
+            "estado_salud": (
+                "ALERTA_KILL_SWITCH" if alerta_rollback else "SALUDABLE"
+            ),
+            "accion_recomendada": (
+                "Apagar toggle pagos_express_v1 en ConfigCat inmediatamente (Tasa de error > 2%)"
+                if alerta_rollback
+                else "Mantener rollout progresivo (Interno -> 20% Canary -> 100%)"
+            ),
+            "historial_reciente": self.historial[-5:],
+        }
+
+
 # Instancias globales
 inventario = Inventario()
 inventario.agregar_producto(Producto(1, "Laptop Pro", 1000.0, 10))
@@ -121,18 +220,21 @@ inventario.agregar_producto(Producto(2, "Mouse Gamer", 50.0, 50))
 inventario.agregar_producto(Producto(3, "Teclado Mecanico", 80.0, 30))
 
 wishlist = Wishlist()
+pagos_express = PagosExpress()
 
 
 @app.route("/health")
 def health():
     """Health check endpoint para Render."""
+    metricas_pe = pagos_express.obtener_metricas()
     return (
         jsonify(
             {
                 "status": "healthy",
                 "service": "miweb",
-                "version": "1.0.0",
+                "version": "1.1.0",
                 "configcat_connected": bool(CONFIGCAT_KEY),
+                "observabilidad_pagos_express": metricas_pe["estado_salud"],
             }
         ),
         200,
@@ -154,6 +256,7 @@ def index():
 
     wishlist_activo = is_feature_enabled("wishlist_enabled", default=False)
     descuento_activo = is_feature_enabled("descuento_iva_toggle", default=False)
+    pagos_express_activo = is_feature_enabled("pagos_express_v1", default=False)
     return (
         jsonify(
             {
@@ -165,6 +268,12 @@ def index():
                         "descripcion": "Lista de deseos para guardar productos favoritos",
                         "ejemplo": "Ejemplo 1 de Slicing Vertical",
                     },
+                    "pagos_express_v1": {
+                        "activo": pagos_express_activo,
+                        "toggle_alias": "pagos-express-v1",
+                        "descripcion": "Compra rápida 1-Clic con telemetría de conversión y error (Caso Taller 6)",
+                        "estrategia_release": "Rollout progresivo: Interno -> 20% Canary -> 100%",
+                    },
                     "descuento_iva_toggle": {
                         "activo": descuento_activo,
                         "descripcion": "Descuentos automáticos en ventas",
@@ -174,6 +283,8 @@ def index():
                     "/health",
                     "/toggle",
                     "/wishlist",
+                    "/pagos-express",
+                    "/pagos-express/metricas",
                     "/inventario",
                     "/venta",
                     "/dashboard",
@@ -197,11 +308,13 @@ def toggle_status():
     """Consulta el estado en vivo de los Feature Flags en ConfigCat."""
     wishlist_activo = is_feature_enabled("wishlist_enabled", default=False)
     descuento_activo = is_feature_enabled("descuento_iva_toggle", default=False)
+    pagos_express_activo = is_feature_enabled("pagos_express_v1", default=False)
     return (
         jsonify(
             {
                 "flags": {
                     "wishlist_enabled": wishlist_activo,
+                    "pagos_express_v1": pagos_express_activo,
                     "descuento_iva_toggle": descuento_activo,
                 },
                 "configcat_sdk_configured": bool(CONFIGCAT_KEY),
@@ -307,6 +420,110 @@ def remover_de_wishlist(id_producto=None):
                 "mensaje": f"Producto {id_producto} removido de la Lista de Deseos",
                 "id_producto": id_producto,
                 "wishlist": wishlist.obtener_items(),
+            }
+        ),
+        200,
+    )
+
+
+@app.route("/pagos-express", methods=["POST"])
+def ejecutar_pago_express():
+    """Endpoint de Pagos Express 1-Clic protegido por Feature Flag 'pagos_express_v1'.
+
+    Resuelve el Caso del Taller 6: 'La funcionalidad de Pagos Express ya está
+    en main, pero nadie se atreve a activarla'.
+    """
+    pagos_express_activo = is_feature_enabled("pagos_express_v1", default=False)
+
+    if not pagos_express_activo:
+        return (
+            jsonify(
+                {
+                    "error": "Pagos Express 1-Clic desactivado por Feature Flag (Deploy != Release)",
+                    "feature_flag": "pagos_express_v1",
+                    "toggle_alias": "pagos-express-v1",
+                    "estado": "OFF (0% Rollout - Dark Launch)",
+                    "mensaje": (
+                        "El código ya está desplegado en main desde hace 9 días, "
+                        "pero permanece apagado para el 100% de usuarios hasta que el PO "
+                        "ejecute la estrategia de liberación gradual (Interno -> 20% Canary -> 100%)."
+                    ),
+                }
+            ),
+            403,
+        )
+
+    data = request.get_json(silent=True) or {}
+    if data.get("simular_error"):
+        pagos_express.registrar_error_pasarela(
+            str(data.get("motivo", "Fallo simulado en pasarela 1-Clic"))
+        )
+        return (
+            jsonify(
+                {
+                    "error": "Error en pasarela de Pago Express registrado en telemetría",
+                    "feature_flag": "pagos_express_v1",
+                    "metricas": pagos_express.obtener_metricas(),
+                }
+            ),
+            502,
+        )
+
+    id_prod = int(data.get("id_producto", 1))
+    cant = int(data.get("cantidad", 1))
+    metodo = str(data.get("metodo_pago", "Tarjeta Guardada 1-Clic"))
+
+    try:
+        tx = pagos_express.procesar_pago(inventario, id_prod, cant, metodo)
+        return (
+            jsonify(
+                {
+                    "status": "pago_express_exitoso",
+                    "mensaje": f"⚡ Pago Express 1-Clic completado para '{tx['producto']}'",
+                    "transaccion": tx,
+                    "feature_flag": "pagos_express_v1",
+                    "estado": "ON (Liberación Controlada)",
+                    "metricas": pagos_express.obtener_metricas(),
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        return (
+            jsonify(
+                {
+                    "error": str(e),
+                    "feature_flag": "pagos_express_v1",
+                    "metricas": pagos_express.obtener_metricas(),
+                }
+            ),
+            400,
+        )
+
+
+@app.route("/pagos-express/metricas", methods=["GET"])
+def metricas_pagos_express():
+    """Devuelve en tiempo real la telemetría de conversión, error y plan de liberación segura."""
+    pagos_express_activo = is_feature_enabled("pagos_express_v1", default=False)
+    metricas = pagos_express.obtener_metricas()
+    return (
+        jsonify(
+            {
+                "feature_flag": "pagos_express_v1",
+                "toggle_alias": "pagos-express-v1",
+                "activo": pagos_express_activo,
+                "estado_release": (
+                    "ON (Rollout Activo en Producción)"
+                    if pagos_express_activo
+                    else "OFF (Dark Launch en main - 0% usuarios)"
+                ),
+                "telemetria": metricas,
+                "plan_liberacion_segura": {
+                    "fase_1": "Usuarios internos / QA (Validación de telemetría y health check)",
+                    "fase_2": "Canary 20% usuarios este viernes (Ventana de observación 24h-48h)",
+                    "fase_3": "Escalamiento 50% -> 100% si tasa de error < 2.0% y conversión estable",
+                    "criterio_kill_switch": "Desactivar toggle en ConfigCat (< 5 seg) si tasa_error > 2% o latencia > 800ms",
+                },
             }
         ),
         200,

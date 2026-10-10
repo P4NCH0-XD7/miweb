@@ -1,5 +1,5 @@
 import unittest
-from app import Inventario, Producto, Wishlist, app, is_feature_enabled
+from app import Inventario, PagosExpress, Producto, Wishlist, app, is_feature_enabled
 
 
 class TestWishlist(unittest.TestCase):
@@ -25,6 +25,33 @@ class TestWishlist(unittest.TestCase):
         self.wishlist.agregar_item(1)
         self.wishlist.agregar_item(3)
         self.assertEqual(self.wishlist.obtener_items(), [1, 3, 5])
+
+
+class TestPagosExpress(unittest.TestCase):
+    def setUp(self):
+        self.inventario = Inventario()
+        self.inventario.agregar_producto(Producto(1, "Laptop Pro", 1000.0, 5))
+        self.inventario.agregar_producto(Producto(2, "Mouse Gamer", 50.0, 10))
+        self.pe = PagosExpress()
+
+    def test_pago_express_exitoso_y_conversion(self):
+        tx = self.pe.procesar_pago(self.inventario, 2, 1)
+        self.assertEqual(tx["estado"], "APROBADO")
+        self.assertEqual(tx["total_con_iva"], 58.0)
+        metricas = self.pe.obtener_metricas()
+        self.assertEqual(metricas["intentos_totales"], 1)
+        self.assertEqual(metricas["pagos_exitosos"], 1)
+        self.assertEqual(metricas["tasa_conversion_pct"], 100.0)
+        self.assertEqual(metricas["tasa_error_pct"], 0.0)
+        self.assertFalse(metricas["alerta_rollback"])
+
+    def test_pago_express_error_activa_kill_switch(self):
+        self.pe.registrar_error_pasarela("Timeout bancario")
+        metricas = self.pe.obtener_metricas()
+        self.assertEqual(metricas["pagos_con_error"], 1)
+        self.assertEqual(metricas["tasa_error_pct"], 100.0)
+        self.assertTrue(metricas["alerta_rollback"])
+        self.assertEqual(metricas["estado_salud"], "ALERTA_KILL_SWITCH")
 
 
 class TestInventario(unittest.TestCase):
@@ -88,6 +115,7 @@ class TestWebEndpoints(unittest.TestCase):
         self.assertIn("despliegue", data)
         self.assertIn("endpoints", data)
         self.assertIn("wishlist_enabled", data["feature_flags"])
+        self.assertIn("pagos_express_v1", data["feature_flags"])
 
     def test_inventario_endpoint(self):
         response = self.client.get("/inventario")
@@ -102,11 +130,25 @@ class TestWebEndpoints(unittest.TestCase):
         data = response.get_json()
         self.assertIn("flags", data)
         self.assertIn("wishlist_enabled", data["flags"])
+        self.assertIn("pagos_express_v1", data["flags"])
 
     def test_wishlist_endpoint_toggle_protection(self):
         """Verifica que el endpoint responda 200 o 403 dependiendo del estado del flag."""
         response = self.client.get("/wishlist")
         self.assertIn(response.status_code, [200, 403])
+
+    def test_pagos_express_endpoint_toggle_protection(self):
+        """Verifica que Pagos Express respete el toggle pagos_express_v1 (200 o 403)."""
+        response = self.client.post("/pagos-express", json={"id_producto": 2, "cantidad": 1})
+        self.assertIn(response.status_code, [200, 403])
+
+    def test_pagos_express_metricas_endpoint(self):
+        response = self.client.get("/pagos-express/metricas")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["feature_flag"], "pagos_express_v1")
+        self.assertIn("telemetria", data)
+        self.assertIn("plan_liberacion_segura", data)
 
     def test_feature_toggle_fallback(self):
         self.assertFalse(is_feature_enabled("flag_inexistente", default=False))
@@ -129,3 +171,4 @@ class TestWebEndpoints(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
